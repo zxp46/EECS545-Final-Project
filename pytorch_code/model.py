@@ -29,7 +29,7 @@ class Generator(nn.Module):
 
         size = 4
 
-        layers += [nn.ConvTranspose2d(feature_map, feature_map // 2, kernal_size, 2, 1, bias=False)]
+        layers += [nn.ConvTranspose2d(feature_map, feature_map // 2, kernel_size, 2, 1, bias=False)]
         layers += [nn.BatchNorm2d(feature_map // 2)]
         layers += [nn.ReLU(True)]
         feature_map = feature_map // 2
@@ -80,7 +80,7 @@ class Discriminator(nn.Module):
             feature_map = feature_map * 2
             size = size / 2
 
-        layers += [nn.Conv2d(feature_map, feature_map * 2, kernal_size, 2, 1, bias=False)]
+        layers += [nn.Conv2d(feature_map, feature_map * 2, kernel_size, 2, 1, bias=False)]
         layers += [nn.BatchNorm2d(feature_map * 2)]
         layers += [nn.LeakyReLU(0.2, inplace=True)]
         feature_map = feature_map * 2
