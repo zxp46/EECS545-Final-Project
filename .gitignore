@@ -2,6 +2,9 @@
 .DS_Store
 .AppleDouble
 .LSOverride
+toymodel/experiments
+toymodel/data
+pytorch_code/venv
 
 # Icon must end with two \r
 Icon
