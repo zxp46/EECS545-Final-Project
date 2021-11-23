@@ -32,28 +32,26 @@ def train(opt, dataloader):
                 errD_fake = torch.mean(discriminator(fake))
                 errD_real = torch.mean(discriminator(real_imgs))
                 if opt.dcgan:
-                    real_cpu = imgs.to(device)
-                    b_size = real_cpu.size(0)
-                    ones = torch.full((b_size,), 1, dtype=torch.float, device=device)
-                    zeros = torch.full((b_size,), 0, dtype=torch.float, device=device)
+                    ones = torch.full((1,), 1, dtype=torch.float, device=device)
+                    zeros = torch.full((1,), 0, dtype=torch.float, device=device)
                     criterion = torch.nn.BCELoss()
-                    errD = criterion(ones, errD_real.view(-1)) + criterion(zeros, errD_fake.view(-1))
+                    errD = criterion(ones, errD_real.view(-1).detach()) + criterion(zeros, errD_fake.view(-1).detach())
+                    errD = Variable(errD, requires_grad=True)
                 else:
                     errD = errD_fake - errD_real
-
                 discriminator.zero_grad()
                 errD.backward()
                 discriminator_optimizer.step()
-                for p in discriminator.parameters():
-                    p.data.clamp_(-0.01, 0.01)
+                if not opt.dcgan:
+                    for p in discriminator.parameters():
+                        p.data.clamp_(-0.01, 0.01)
 
             gen_fake = generator(noise)
             if opt.dcgan:
-                real_cpu = imgs.to(device)
-                b_size = real_cpu.size(0)
-                ones = torch.full((b_size,), 1, dtype=torch.float, device=device)
+                ones = torch.full((opt.batchSize,), 1, dtype=torch.float, device=device)
                 criterion = torch.nn.BCELoss()
-                errG = criterion(ones, discriminator(gen_fake).view(-1))
+                errG = criterion(ones, discriminator(gen_fake).view(-1).detach())
+                errG = Variable(errG, requires_grad=True)
             else:
                 errG = -torch.mean(discriminator(gen_fake))
 
@@ -136,7 +134,7 @@ if __name__ == "__main__":
                                  transform=transforms.Compose([
                                      transforms.Scale(opt.imageSize),
                                      transforms.ToTensor(),
-                                     transforms.Normalize((0.5,), (0.5,)),
+                                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                                  ])
                                  )
     elif opt.dataset == 'mnist':
@@ -144,7 +142,7 @@ if __name__ == "__main__":
                                  transform=transforms.Compose([
                                      transforms.Scale(opt.imageSize),
                                      transforms.ToTensor(),
-                                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                                     transforms.Normalize((0.5,), (0.5,)),
                                  ])
                                  )
     assert dataset
@@ -167,7 +165,7 @@ if __name__ == "__main__":
     generator = Generator(in_channel=nz, feature_map=g_feature, out_channel=nc,
                           ngpu=ngpu, kernel_size=kernel_size).to(device)
     discriminator = Discriminator(in_channel=nc, feature_map=d_feature, ngpu=ngpu,
-                                  kernel_size=kernel_size).to(device)
+                                  kernel_size=kernel_size, dcgan=opt.dcgan).to(device)
 
     if opt.cpG is not None and opt.cpD is not None:
         try:
