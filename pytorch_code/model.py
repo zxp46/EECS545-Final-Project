@@ -12,10 +12,10 @@ def weights_init(m):
         nn.init.constant_(m.bias.data, 0)
 
 
-class Generator(nn.Module):
+class Generator(nn.Module): # input z (64,100,1,1)
     def __init__(self, in_channel=100,
                  out_channel=3,
-                 feature_map=128,
+                 feature_map=256,
                  kernel_size=4,
                  image_size=64,
                  ngpu=0):

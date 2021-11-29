@@ -22,22 +22,24 @@ def train(opt, dataloader):
         discriminator_optimizer = torch.optim.RMSprop(discriminator.parameters(), lr=opt.lrD)
         generator_optimizer = torch.optim.RMSprop(generator.parameters(), lr=opt.lrG)
     gen_iterations = 0
+    criterion = torch.nn.BCELoss()
     for epoch in range(opt.n_epochs):
         for i, (imgs, _) in enumerate(dataloader):
             real_imgs = Variable(imgs.type(torch.Tensor))
             real_imgs = real_imgs.to(device)
+            label_size = real_imgs.size(0)
+            ones = torch.full((label_size,), 1.0, dtype=real_imgs.dtype, device=device)
+            zeros = torch.full((label_size,), 0.0, dtype=real_imgs.dtype, device=device)
             for _ in range(opt.Diters):
-                noise = torch.randn((opt.batchSize, opt.nz, 1, 1), device=device)
+                noise = torch.randn((label_size, opt.nz, 1, 1), device=device)
                 fake = generator(noise).detach()
-                errD_fake = torch.mean(discriminator(fake))
-                errD_real = torch.mean(discriminator(real_imgs))
+                errD_fake = discriminator(fake)
+                errD_real = discriminator(real_imgs)
                 if opt.dcgan:
-                    ones = torch.full((1,), 1, dtype=torch.float, device=device)
-                    zeros = torch.full((1,), 0, dtype=torch.float, device=device)
-                    criterion = torch.nn.BCELoss()
-                    errD = criterion(ones, errD_real.view(-1).detach()) + criterion(zeros, errD_fake.view(-1).detach())
-                    errD = Variable(errD, requires_grad=True)
+                    errD = criterion(errD_real, ones) + criterion(errD_fake, zeros)
                 else:
+                    errD_fake = torch.mean(errD_fake)
+                    errD_real = torch.mean(errD_real)
                     errD = errD_fake - errD_real
                 discriminator.zero_grad()
                 errD.backward()
@@ -48,10 +50,8 @@ def train(opt, dataloader):
 
             gen_fake = generator(noise)
             if opt.dcgan:
-                ones = torch.full((opt.batchSize,), 1, dtype=torch.float, device=device)
                 criterion = torch.nn.BCELoss()
-                errG = criterion(ones, discriminator(gen_fake).view(-1).detach())
-                errG = Variable(errG, requires_grad=True)
+                errG = criterion(discriminator(gen_fake), ones)
             else:
                 errG = -torch.mean(discriminator(gen_fake))
 
@@ -60,10 +60,16 @@ def train(opt, dataloader):
             generator_optimizer.step()
             gen_iterations += 1
 
-            print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
-                  % (epoch, opt.n_epochs, i, len(dataloader), gen_iterations,
-                     errD.item(), -1 * errG.item(), errD_real.item(), errD_fake.item()))
-            if gen_iterations % 1000 == 0:
+            if not opt.dcgan:
+                print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
+                      % (epoch, opt.n_epochs, i, len(dataloader), gen_iterations,
+                         errD.item(), -1 * errG.item(), errD_real.item(), errD_fake.item()))
+            else:
+                print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
+                      % (epoch, opt.n_epochs, i, len(dataloader), gen_iterations,
+                         errD.item(), torch.mean(errG).item(), torch.mean(errD_real).item()
+                         , torch.mean(errD_fake).item()))
+            if gen_iterations % 10 == 0:
                 real_imgs = real_imgs.mul(0.5).add(0.5)
                 save_image(real_imgs, '{0}/real_samples.png'.format(opt.save_imgs))
                 with torch.no_grad():
@@ -78,12 +84,12 @@ if __name__ == "__main__":
     parser.add_argument('--nc', type=int, default=3, help='input image channels')
     parser.add_argument('--kernel', type=int, default=4, help='kernel size of CNN, for 1 channel image use 3'
                                                               ', 3 channel use 4')
-    parser.add_argument('--dataset', required=True, help='lsun | celeb | other')
+    parser.add_argument('--dataset', required=True, help='lsun | celeb | mnist | other')
     parser.add_argument('--dataroot', default=None, help='path to dataset')
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
     parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
     parser.add_argument('--nz', type=int, default=100, help='size of the z (noise)')
-    parser.add_argument('--g_feature', type=int, default=128, help='Final feature maps for G')
+    parser.add_argument('--g_feature', type=int, default=256, help='Final feature maps for G')
     parser.add_argument('--d_feature', type=int, default=32, help='Final feature maps for D')
     parser.add_argument('--n_epochs', type=int, default=25, help='training epochs')
     parser.add_argument('--lrD', type=float, default=0.00005, help='learning rate for Critic, default=0.00005')
@@ -117,7 +123,7 @@ if __name__ == "__main__":
         # folder dataset
         dataset = datasets.ImageFolder(root=opt.dataroot,
                                        transform=transforms.Compose([
-                                           transforms.Scale(opt.imageSize),
+                                           transforms.Resize(opt.imageSize),
                                            transforms.CenterCrop(opt.imageSize),
                                            transforms.ToTensor(),
                                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -130,17 +136,17 @@ if __name__ == "__main__":
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ]))
     elif opt.dataset == 'celeb':
-        dataset = datasets.CelebA(root=opt.dataroot, download=True,
-                                 transform=transforms.Compose([
-                                     transforms.Scale(opt.imageSize),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                                 ])
-                                 )
+        dataset = datasets.CelebA(root=opt.dataroot, download=False,
+                                  transform=transforms.Compose([
+                                      transforms.Resize(opt.imageSize),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                                  ])
+                                  )
     elif opt.dataset == 'mnist':
-        dataset = datasets.MNIST(root=opt.dataroot, download=True,
+        dataset = datasets.MNIST(root=opt.dataroot, download=False,
                                  transform=transforms.Compose([
-                                     transforms.Scale(opt.imageSize),
+                                     transforms.Resize(opt.imageSize),
                                      transforms.ToTensor(),
                                      transforms.Normalize((0.5,), (0.5,)),
                                  ])
@@ -163,9 +169,9 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if (torch.cuda.is_available() and opt.ngpu > 0) else "cpu")
 
     generator = Generator(in_channel=nz, feature_map=g_feature, out_channel=nc,
-                          ngpu=ngpu, kernel_size=kernel_size).to(device)
+                          ngpu=ngpu, kernel_size=kernel_size, image_size=opt.imageSize).to(device)
     discriminator = Discriminator(in_channel=nc, feature_map=d_feature, ngpu=ngpu,
-                                  kernel_size=kernel_size, dcgan=opt.dcgan).to(device)
+                                  kernel_size=kernel_size, dcgan=opt.dcgan, image_size=opt.imageSize).to(device)
 
     if opt.cpG is not None and opt.cpD is not None:
         try:
