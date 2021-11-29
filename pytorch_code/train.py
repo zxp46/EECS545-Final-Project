@@ -28,15 +28,15 @@ def train(opt, dataloader):
             real_imgs = Variable(imgs.type(torch.Tensor))
             real_imgs = real_imgs.to(device)
             label_size = real_imgs.size(0)
-            ones = torch.full([label_size, 1, 1, 1], 1.0, dtype=real_imgs.dtype, device=device)
-            zeros = torch.full([label_size, 1, 1, 1], 0.0, dtype=real_imgs.dtype, device=device)
+            ones = torch.full((label_size,), 1.0, dtype=real_imgs.dtype, device=device)
+            zeros = torch.full((label_size,), 0.0, dtype=real_imgs.dtype, device=device)
             for _ in range(opt.Diters):
                 noise = torch.randn((label_size, opt.nz, 1, 1), device=device)
                 fake = generator(noise).detach()
                 errD_fake = discriminator(fake)
                 errD_real = discriminator(real_imgs)
                 if opt.dcgan:
-                    errD = criterion(errD_real, ones) + criterion(errD_fake, zeros)
+                    errD = criterion(errD_real.view(-1), ones) + criterion(errD_fake.view(-1), zeros)
                 else:
                     errD_fake = torch.mean(errD_fake)
                     errD_real = torch.mean(errD_real)
@@ -51,7 +51,7 @@ def train(opt, dataloader):
             gen_fake = generator(noise)
             if opt.dcgan:
                 criterion = torch.nn.BCELoss()
-                errG = criterion(discriminator(gen_fake), ones)
+                errG = criterion(discriminator(gen_fake).view(-1), ones)
             else:
                 errG = -torch.mean(discriminator(gen_fake))
 
@@ -69,7 +69,7 @@ def train(opt, dataloader):
                       % (epoch, opt.n_epochs, i, len(dataloader), gen_iterations,
                          errD.item(), torch.mean(errG).item(), torch.mean(errD_real).item()
                          , torch.mean(errD_fake).item()))
-            if gen_iterations % 10 == 0:
+            if gen_iterations % 1000 == 0:
                 real_imgs = real_imgs.mul(0.5).add(0.5)
                 save_image(real_imgs, '{0}/real_samples.png'.format(opt.save_imgs))
                 with torch.no_grad():
