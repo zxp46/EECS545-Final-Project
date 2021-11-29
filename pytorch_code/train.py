@@ -28,8 +28,8 @@ def train(opt, dataloader):
             real_imgs = Variable(imgs.type(torch.Tensor))
             real_imgs = real_imgs.to(device)
             label_size = real_imgs.size(0)
-            ones = torch.full((label_size,), 1.0, dtype=real_imgs.dtype, device=device)
-            zeros = torch.full((label_size,), 0.0, dtype=real_imgs.dtype, device=device)
+            ones = torch.full([label_size, 1, 1, 1], 1.0, dtype=real_imgs.dtype, device=device)
+            zeros = torch.full([label_size, 1, 1, 1], 0.0, dtype=real_imgs.dtype, device=device)
             for _ in range(opt.Diters):
                 noise = torch.randn((label_size, opt.nz, 1, 1), device=device)
                 fake = generator(noise).detach()
