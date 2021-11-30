@@ -1,8 +1,7 @@
 import torch.nn as nn
 
 
-
-#Weight initialization
+# Weight initialization
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
@@ -12,7 +11,7 @@ def weights_init(m):
         nn.init.constant_(m.bias.data, 0)
 
 
-class Generator(nn.Module): # input z (64,100,1,1)
+class Generator(nn.Module):  # input z (64,100,1,1)
     def __init__(self, in_channel=100,
                  out_channel=3,
                  feature_map=256,
@@ -60,15 +59,14 @@ class Discriminator(nn.Module):
                  feature_map=32,
                  kernel_size=4,
                  image_size=64,
-                 ngpu = 0,
-                 dcgan = False):
+                 ngpu=0,
+                 dcgan=False):
         super(Discriminator, self).__init__()
         self.ngpu = ngpu
         self.dcgan = dcgan
         # First layer
         layers = nn.ModuleList()
         layers += [nn.Conv2d(in_channel, feature_map, 4, 2, 1)]
-        layers += [nn.BatchNorm2d(feature_map)]
         layers += [nn.LeakyReLU(0.2, inplace=True)]
 
         size = image_size / 2
