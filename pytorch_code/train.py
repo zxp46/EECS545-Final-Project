@@ -9,8 +9,28 @@ from torchvision.utils import save_image
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torch.autograd import Variable
+import torch.autograd as autograd
+import numpy as np
 import json
 
+
+def compute_gradient_penalty(D, real_samples, fake_samples):
+    alpha = torch.Tensor(np.random.random((real_samples.size(0), 1, 1, 1)), device=device)
+    interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+    d_interpolates = D(interpolates)
+    fake = Variable(torch.Tensor(real_samples.shape[0], 1, 1, 1).fill_(1.0), requires_grad=False)
+    fake = fake.to(device)
+    gradients = autograd.grad(
+        outputs=d_interpolates,
+        inputs=interpolates,
+        grad_outputs=fake,
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True,
+    )[0]
+    gradients = gradients.view(gradients.size(0), -1)
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    return gradient_penalty
 
 def train(opt, dataloader):
     noise = torch.randn((opt.batchSize, opt.nz, 1, 1), device=device)
@@ -24,12 +44,16 @@ def train(opt, dataloader):
     gen_iterations = 0
     criterion = torch.nn.BCELoss()
     for epoch in range(opt.n_epochs):
+        if epoch % 3 == 0:
+            torch.save(generator.state_dict(), '{0}/Gen.pth.tar'.format(opt.experiment))
+            torch.save(discriminator.state_dict(), '{0}/Disc.pth.tar'.format(opt.experiment))
         for i, (imgs, _) in enumerate(dataloader):
             real_imgs = Variable(imgs.type(torch.Tensor))
             real_imgs = real_imgs.to(device)
             label_size = real_imgs.size(0)
             ones = torch.full((label_size,), 1.0, dtype=real_imgs.dtype, device=device)
             zeros = torch.full((label_size,), 0.0, dtype=real_imgs.dtype, device=device)
+
             for _ in range(opt.Diters):
                 noise = torch.randn((label_size, opt.nz, 1, 1), device=device)
                 fake = generator(noise).detach()
@@ -41,12 +65,12 @@ def train(opt, dataloader):
                     errD_fake = torch.mean(errD_fake)
                     errD_real = torch.mean(errD_real)
                     errD = errD_fake - errD_real
+                    if opt.withGP:
+                        errD += 10 * compute_gradient_penalty(discriminator, real_imgs.data, fake.data)
                 discriminator.zero_grad()
                 errD.backward()
                 discriminator_optimizer.step()
-                if not opt.dcgan:
-                    for p in discriminator.parameters():
-                        p.data.clamp_(-0.01, 0.01)
+
 
             gen_fake = generator(noise)
             if opt.dcgan:
@@ -89,30 +113,32 @@ if __name__ == "__main__":
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
     parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
     parser.add_argument('--nz', type=int, default=100, help='size of the z (noise)')
-    parser.add_argument('--g_feature', type=int, default=256, help='Final feature maps for G')
-    parser.add_argument('--d_feature', type=int, default=32, help='Final feature maps for D')
+    parser.add_argument('--g_feature', type=int, default=512, help='Final feature maps for G')
+    parser.add_argument('--d_feature', type=int, default=64, help='Final feature maps for D')
     parser.add_argument('--n_epochs', type=int, default=25, help='training epochs')
     parser.add_argument('--lrD', type=float, default=0.00005, help='learning rate for Critic, default=0.00005')
-    parser.add_argument('--lrG', type=float, default=0.00005, help='learning rate for Generator, default=0.00005')
+    parser.add_argument('--lrG', type=float, default=0.001, help='learning rate for Generator, default=0.001')
     parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
     parser.add_argument('--cuda', action='store_true', help='enables cuda')
-    parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
+    parser.add_argument('--ngpu', type=int, default=0, help='number of GPUs to use')
+    parser.add_argument('--manualSeed', type=int, default=0, help='random seed')
     parser.add_argument('--clamp_lower', type=float, default=-0.01, help='upper limit of weight')
     parser.add_argument('--clamp_upper', type=float, default=0.01, help='lower limit of weight')
     parser.add_argument('--Diters', type=int, default=5, help='number of D iters per each G iter')
-    parser.add_argument('--experiment', default=None, help='Where to store samples and models')
-    parser.add_argument('--save_imgs', default=None, help='Where to save images')
-    parser.add_argument('--cpG', default='', help="checkpoints of G to continue training")
-    parser.add_argument('--cpD', default='', help="checkpoints of D to continue training")
+    parser.add_argument('--experiment', default='experiment', help='Where to store samples and models')
+    parser.add_argument('--save_imgs', default='saved_imgs', help='Where to save images')
+    parser.add_argument('--cpG', default='experiment', help="checkpoints of G to continue training")
+    parser.add_argument('--cpD', default='experiment', help="checkpoints of D to continue training")
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is rmsprop)')
     parser.add_argument('--dcgan', action='store_true', help='Whether to train on dcgan (default is wgan)')
+    parser.add_argument('--withGP', action='store_true', help='Whether to use gradient penalty')
     opt = parser.parse_args()
 
     if opt.experiment is None:
         opt.experiment = 'samples'
     os.system('mkdir {0}'.format(opt.experiment))
-
-    opt.manualSeed = random.randint(1, 10000)
+    if opt.manualSeed == 0:
+        opt.manualSeed = random.randint(1, 10000)
     print("Random Seed: ", opt.manualSeed)
     random.seed(opt.manualSeed)
     torch.manual_seed(opt.manualSeed)
@@ -130,7 +156,7 @@ if __name__ == "__main__":
                                        ]))
     elif opt.dataset == 'lsun':
         dataset = datasets.LSUN(root=opt.dataroot, classes=['bedroom_train'], transform=transforms.Compose([
-            transforms.Scale(opt.imageSize),
+            transforms.Resize(opt.imageSize),
             transforms.CenterCrop(opt.imageSize),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -144,7 +170,7 @@ if __name__ == "__main__":
                                   ])
                                   )
     elif opt.dataset == 'mnist':
-        dataset = datasets.MNIST(root=opt.dataroot, download=False,
+        dataset = datasets.MNIST(root=opt.dataroot, download=True,
                                  transform=transforms.Compose([
                                      transforms.Resize(opt.imageSize),
                                      transforms.ToTensor(),
