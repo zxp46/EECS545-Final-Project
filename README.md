@@ -1,4 +1,4 @@
-###README
+### README
 
 This is the repo for Umich EECS 545 final project: **Loss Function Matters: Probing into the Reason behind Wasserstein GAN’s Success**
 
@@ -14,7 +14,7 @@ Pytorch code: main WGAN code implemented with pytorch
 
 ### Usage
 
-####Toy model
+#### Toy model
 
 ```shell
 mkdir data
@@ -23,7 +23,7 @@ mkdir experiments
 
 Before running the notebook
 
-####Pytorch code
+#### Pytorch code
 
 **Quick Start**
 
