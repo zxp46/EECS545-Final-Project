@@ -1,1 +1,0 @@
-python3 train.py --ngpu 1 --dataset celeb --experiment experiment_celeb --save_imgs saved_imgs_celeb --cpG experiment_celeb --cpD experiment_celeb --dataroot ~/data --kernel 4 --nc 3 --imageSize 32 --g_feature 512 d_feature 64 --adam > experiment_celeb/log.txt
